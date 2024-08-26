@@ -1,44 +1,55 @@
+//importing the packages
 const express = require('express');
 const mysql = require('mysql2');
-const session = require('express-session');
+const session = require('express-session');//for session management
 const bcrypt = require('bcryptjs');
-const bodyParser = require('body-parser');
-const path = require('path');
-const { check, validationResult } = require('express-validator');
+const bodyParser = require('body-parser');//pass data sent from the front-end of the application
+const path = require('path');//access different paths within the application structure
+const { check, validationResult } = require('express-validator');//for validation
+const dotenv = require('dotenv')
+const cors = require('cors');
 
-
+//configuring the dotenv
+dotenv.config();
 //initialize
 const app = express();
+const port = 3000;
 
 //configure - middleware
-app.use(express.static(__dirname));
-app.use(express.json());
+//middleware is the interface between the frontend and the backend
+app.use(express.static(__dirname));//use the static files in our directory
+//external files that accompany the main files e.g. images, external js files, other html files
+app.use(express.json());//to handle the data
 app.use(bodyParser.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true }));//server/frontend modifies the data input to more friendly way for submission
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(cors());
 
 // Configure session middleware
 app.use(session({
-    secret: 'uwebuiwebciuwebcwecubweubweofbweofbowebfouwbfuowerb',
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
 }));
 
 //create connection
-const connection  = mysql.createConnection({
-    host: 'localhost',
-    port: 3306,
-    user: 'user_name',
-    password: 'password',
-    database: 'database_name'
+const connectionPool  = mysql.createPool({
+    connectionLimit: 1000,
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    port: process.env.DB_PORT,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME
 });
 
-connection.connect((err) => {
+//connect to the database
+connectionPool.getConnection((err, connection) => {
     if(err){
         console.error('Error occured while connecting to the db server: ' + err.stack);
         return;
     }
     console.log('DB Server connected successfully.');
+    connection.release();//release the connection back to the pool
 });
 
 //define route to registration form
@@ -55,13 +66,13 @@ app.get('/login', (request, response) => {
 const User = {
     tableName: 'users',
     createUser: function(newUser, callback){
-        connection.query('INSERT INTO ' + this.tableName + ' SET ?', newUser, callback);
+        connectionPool.query('INSERT INTO ' + this.tableName + ' SET ?', newUser, callback);
     },
     getUserByEmail: function(email, callback){
-        connection.query('SELECT * FROM ' + this.tableName + ' WHERE email = ?', email, callback);
+        connectionPool.query('SELECT * FROM ' + this.tableName + ' WHERE email = ?', email, callback);
     },
     getUserByUsername: function(username, callback){
-        connection.query('SELECT * FROM ' + this.tableName + ' WHERE username = ?', username, callback);
+        connectionPool.query('SELECT * FROM ' + this.tableName + ' WHERE username = ?', username, callback);
     },
 }
 
@@ -91,7 +102,7 @@ app.post('/plp/users/registration', [
     }
 
     //hash password
-    const saltRounds = 10;
+    const saltRounds = 10;//a salt is a piece of random text used in hashing
     const hashedPassword = await bcrypt.hash(request.body.password, saltRounds);
 
     //define a new user object
@@ -101,6 +112,9 @@ app.post('/plp/users/registration', [
         username: request.body.username,
         password: hashedPassword
     }
+
+    //log new user data to debug
+    console.log('Attempting to create user:', newUser);
 
     //save new user
     User.createUser(newUser, (error) => {
